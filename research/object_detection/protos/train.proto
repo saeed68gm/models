@@ -112,4 +112,10 @@ message TrainConfig {
   // dictionary, so that they can be displayed in Tensorboard. Note that this
   // will lead to a larger memory footprint.
   optional bool retain_original_images = 23 [default=false];
+
+  optional bool flop_loss = 26 [default=false];
+
+  optional float flop_gamma_thresh = 27 [default=0.0];
+
+  optional float flop_reg_strength = 28 [default=0.0];
 }

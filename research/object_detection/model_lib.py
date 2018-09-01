@@ -34,6 +34,7 @@ from object_detection.utils import label_map_util
 from object_detection.utils import shape_utils
 from object_detection.utils import variables_helper
 from object_detection.utils import visualization_utils as vis_utils
+from morph_net.network_regularizers import flop_regularizer
 
 # A map of names to methods that help build the model.
 MODEL_BUILD_UTIL_MAP = {
@@ -294,6 +295,13 @@ def create_model_fn(detection_model_fn, configs, hparams, use_tpu=False):
                                          name='regularization_loss')
           losses.append(regularization_loss)
           losses_dict['Loss/regularization_loss'] = regularization_loss
+      if train_config.flop_loss:
+        gamma_thresh = 1e-3
+        reg_strength = 1e-9
+        print(prediction_dict)
+        network_reg = flop_regularizer.GammaFlopsRegularizer([prediction_dict['class_predictions_with_background'].op], gamma_thresh)
+        flop_loss = reg_strength * network_reg.get_regularization_term()
+        losses_dict['Loss/flop_loss'] = flop_loss
       total_loss = tf.add_n(losses, name='total_loss')
       losses_dict['Loss/total_loss'] = total_loss
 
@@ -333,6 +341,10 @@ def create_model_fn(detection_model_fn, configs, hparams, use_tpu=False):
       if not use_tpu:
         for var in optimizer_summary_vars:
           tf.summary.scalar(var.op.name, var)
+        if network_reg:
+          tf.summary.scalar('FLOPs', network_reg.get_cost())
+        else:
+          print('not adding FLOPS to summaries')
       summaries = [] if use_tpu else None
       train_op = tf.contrib.layers.optimize_loss(
           loss=total_loss,
@@ -387,7 +399,7 @@ def create_model_fn(detection_model_fn, configs, hparams, use_tpu=False):
       # Eval metrics on a single example.
       eval_metric_ops = eval_util.get_eval_metric_ops_for_evaluators(
           eval_config,
-          category_index.values(),
+          list(category_index.values()),
           eval_dict)
       for loss_key, loss_tensor in iter(losses_dict.items()):
         eval_metric_ops[loss_key] = tf.metrics.mean(loss_tensor)
